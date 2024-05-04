@@ -1,4 +1,3 @@
-import sqlalchemy
 from .db_pack import db_session
 from .db_pack.users import User
 from .db_pack.filters import Filter
@@ -14,6 +13,7 @@ from os.path import isfile
 from os import listdir, remove
 from datetime import datetime
 import asyncio
+from typing import List
 
 
 db_session.global_init(const.ROUTE_TO_DB)
@@ -23,15 +23,18 @@ print("count of users: ", USER_COUNTER)
 
 
 def confirm_data_editing():
+    """сохранить изменения в базу данных"""
     DB_SESSION.commit()
 
 
 def get_user_count() -> int:
+    """сообщить число пользователей бота"""
     global USER_COUNTER
     return USER_COUNTER
 
 
 def get_bot_backup() -> dict:
+    """восстановить данные бота"""
     ds = {"bl_last": None, "banned_ips": []}
     if not isfile(const.ROUTE_TO_BACKUP):
         return ds.copy()
@@ -44,6 +47,7 @@ def get_bot_backup() -> dict:
 
 
 def save_bot_backup(backup):
+    """сохранить данные бота"""
     with open(const.ROUTE_TO_BACKUP, mode="w+", encoding=const.ENCODING) as fi:
         dump(backup, fi)
 
@@ -51,7 +55,7 @@ def save_bot_backup(backup):
 """____________________________________ USER DB METHODS ____________________________________"""
 
 
-def reg_user(uid: int, name: str):
+def reg_user(uid: int, name: str):   # зарегестрировать пользователя
     global USER_COUNTER
     USER_COUNTER += 1
     user = User(uid=uid, username=name)
@@ -60,11 +64,9 @@ def reg_user(uid: int, name: str):
     print("count of users: ", USER_COUNTER)
 
 
-def delete_user(uid: int):
-    global USER_COUNTER
-    USER_COUNTER -= 1
-    DB_SESSION.delete(DB_SESSION.query(User).filter(User.uid == uid).first())
-    DB_SESSION.commit()
+async def clear_user_data(uid: int):   # очистить данные пользователя
+    for i in get_pins(uid):
+        delete_pin(uid, i.pid)
     for i in get_blanks(uid):
         if i.exist_to_user and not is_blank_pinned(i.bid):
             delete_blank(uid, i.bid)
@@ -72,119 +74,139 @@ def delete_user(uid: int):
         delete_filter(uid, i.fid)
     for i in get_games(uid):
         del_member(uid, i.chid)
+
+
+def delete_user(uid: int):   # удалить пользователя
+    global USER_COUNTER
+    USER_COUNTER -= 1
+    DB_SESSION.delete(DB_SESSION.query(User).filter(User.uid == uid).first())
+    DB_SESSION.commit()
+    asyncio.create_task(clear_user_data(uid))
     print("count of users: ", USER_COUNTER)
 
 
-def is_user_exist(uid: int) -> bool:
+def is_user_exist(uid: int) -> bool:   # проверить существование пользователя
     return DB_SESSION.query(User).filter(User.uid == uid).count() > 0
 
 
-def get_user_data(uid: int) -> User | None:
+def get_user_data(uid: int) -> User | None:   # получить данные пользователя
     return DB_SESSION.query(User).filter(User.uid == uid).first()
+
+
+def get_users_by_role(role: str) -> List[User]:   # получить список пользователей по роли
+    return DB_SESSION.query(User).filter(User.role == role).all()
+
+
+def is_user_have_role(uid: int, role: str) -> bool:   # получить список пользователей по роли
+    return DB_SESSION.query(User).filter(User.uid == uid, User.role == role).count() > 0
 
 
 """____________________________________ filter DB METHODS ____________________________________"""
 
 
-def reg_filter(uid: int):
+def reg_filter(uid: int):   # зарегистрировать фильтр
     filter = Filter(uid=uid)
     DB_SESSION.add(filter)
     DB_SESSION.commit()
 
 
-def delete_filter(uid: int, fid: int):
+def delete_filter(uid: int, fid: int):   # удалить фильтр
     DB_SESSION.delete(DB_SESSION.query(Filter).filter(Filter.uid == uid, Filter.fid == fid).first())
     DB_SESSION.commit()
 
 
-def is_filter_exist(uid: int, fid: int) -> bool:
+def is_filter_exist(uid: int, fid: int) -> bool:   # проверить существование фильтра
     return DB_SESSION.query(Filter).filter(Filter.uid == uid, Filter.fid == fid).count() > 0
 
 
-def get_filter_data(uid: int, fid: int) -> type[Filter]:
+def get_filter_data(uid: int, fid: int) -> Filter:   # получить данные фильтра
     return DB_SESSION.query(Filter).filter(Filter.uid == uid, Filter.fid == fid).first()
 
 
-def get_filters(uid: int) -> list[type[Filter]]:
+def get_filters(uid: int) -> List[Filter]:   # получить фильтры пользователя
     return DB_SESSION.query(Filter).filter(Filter.uid == uid).all()
 
 
-def count_filters(uid: int) -> int:
+def count_filters(uid: int) -> int:   # количество фильтров пользователя
     return DB_SESSION.query(Filter).filter(Filter.uid == uid).count()
 
 
 """____________________________________ blank DB METHODS ____________________________________"""
 
 
-def reg_blank(uid: int):
+def reg_blank(uid: int):   # зарегистрировать анкету (бланк)
     blank = Blank(uid=uid)
     DB_SESSION.add(blank)
     DB_SESSION.commit()
 
 
-def delete_blank(uid: int, bid: int):
+def delete_blank(uid: int, bid: int):   # удалить бланк
     DB_SESSION.delete(DB_SESSION.query(Blank).filter(Blank.uid == uid, Blank.bid == bid, Blank.exist_to_user).first())
     DB_SESSION.commit()
 
 
-def is_blank_exist(uid: int, bid: int) -> bool:
+def is_blank_exist(uid: int, bid: int) -> bool:   # проверить существование анкеты
     return DB_SESSION.query(Blank).filter(Blank.uid == uid, Blank.bid == bid, Blank.exist_to_user).count() > 0
 
 
-def is_blank_exist_sp(bid: int) -> bool:
+def is_blank_exist_sp(bid: int) -> bool:   # проверить существование анкеты только по его bid
     return DB_SESSION.query(Blank).filter(Blank.bid == bid, Blank.exist_to_user).count() > 0
 
 
-def count_blanks(uid: int) -> int:
+def is_blank_exist_sp2(bid: int) -> bool:   # проверить существование анкеты только по его bid без учёта доступности
+    return DB_SESSION.query(Blank).filter(Blank.bid == bid).count() > 0
+
+
+def count_blanks(uid: int) -> int:   # посчитать анкеты пользователя
     return DB_SESSION.query(Blank).filter(Blank.uid == uid, Blank.exist_to_user).count()
 
 
-def get_blanks(uid: int) -> list[type[Blank]]:
+def get_blanks(uid: int) -> List[Blank]:   # получить анкеты пользователя
     return DB_SESSION.query(Blank).filter(Blank.uid == uid, Blank.exist_to_user).all()
 
 
-def get_blank(bid: int) -> type[Blank]:
+def get_blank(bid: int) -> Blank:   # получить анкету
     return DB_SESSION.query(Blank).filter(Blank.bid == bid, Blank.exist_to_user).first()
 
 
-def count_lasts_blanks(uid: int) -> int:
+def count_lasts_blanks(uid: int) -> int:   # посчитать черновые бланки пользователя
     return DB_SESSION.query(Blank).filter(Blank.uid == uid, Blank.exist_to_user, Blank.finished == False).count()
 
 
 """____________________________________ pin DB METHODS ____________________________________"""
 
 
-def is_blank_pinned(bid: int) -> bool:
+def is_blank_pinned(bid: int) -> bool:   # проверить закреплён ли бланк
     return DB_SESSION.query(Pin).filter(Pin.bid == bid).count() > 0
 
 
-def is_blank_pinned_for_user(uid: int, bid: int) -> bool:
+def is_blank_pinned_for_user(uid: int, bid: int) -> bool:   # закреплён ли бланк для определённого пользователя
     return DB_SESSION.query(Pin).filter(Pin.bid == bid, Pin.uid == uid).count() > 0
 
 
-def pin(uid: int, bid: int):
+def pin(uid: int, bid: int):   # закрепить бланк
     pin = Pin(uid=uid, bid=bid)
     DB_SESSION.add(pin)
     DB_SESSION.commit()
 
 
-def delete_pin(uid: int, pid: int):
+def delete_pin(uid: int, pid: int):   # открепить бланк
     DB_SESSION.delete(DB_SESSION.query(Pin).filter(Pin.uid == uid, Pin.pid == pid).first())
     DB_SESSION.commit()
 
 
-def get_pins(uid: int) -> list[type[Pin]]:
+def get_pins(uid: int) -> List[Pin]:   # получить закрепы пользователя
     return DB_SESSION.query(Pin).filter(Pin.uid == uid).all()
 
 
-def count_pins(uid: int) -> int:
+def count_pins(uid: int) -> int:   # посчитать закрепы пользователя
     return DB_SESSION.query(Pin).filter(Pin.uid == uid).count()
 
 
 """____________________________________ search _DB METHODS ____________________________________"""
 
 
-async def sp_find_blanks(uid: int, fid: int, enc: list):
+async def sp_find_blanks(uid: int, fid: int, enc: list):   # поиск бланков с очисткой списка
     start = datetime.now()
     ub, fi = get_user_data(uid), get_filter_data(uid, fid)
     if fi.fil_rate is None and fi.fil_ypol is None:
@@ -201,14 +223,14 @@ async def sp_find_blanks(uid: int, fid: int, enc: list):
                                             Blank.bid not in enc, Blank.fil_rate == fi.fil_rate,
                                             Blank.fil_ypol == fi.fil_ypol).all()
     ssl = loads(ub.sp_dat)
-    ssl["search"]["query"] = list(map(lambda g: g.bid, sorted(list(bl), key=lambda g: (arpho.grate_similarity(g.fil_fand, fi.fil_fand), g.search_grate(fi.fil_blacklist, fi.fil_typ_dc, fi.fil_typ_ff)), reverse=True)))
+    ssl["search"]["query"] = list(map(lambda g: g.bid, sorted(list(bl), key=lambda g: (arpho.grate_similarity(g.fil_fand, fi.fil_fand), g.search_grate(fi.fil_blacklist, fi.fil_typ_dc, fi.fil_typ_ff)), reverse=const.SEARCH_REVERSE_F)))
     end = datetime.now()
     ssl["search"]["time"] = round((end - start).total_seconds() * 1000 + (end - start).microseconds / 1000, 4)
     ub.sp_dat = dumps(ssl)
     DB_SESSION.commit()
 
 
-async def find_blanks(uid: int, fid: int, enc: list):
+async def find_blanks(uid: int, fid: int, enc: list):   # поиск бланков с добавлением в список
     start = datetime.now()
     ub, fi = get_user_data(uid), get_filter_data(uid, fid)
     if fi.fil_rate is None and fi.fil_ypol is None:
@@ -225,19 +247,19 @@ async def find_blanks(uid: int, fid: int, enc: list):
                                             Blank.bid not in enc, Blank.fil_rate == fi.fil_rate,
                                             Blank.fil_ypol == fi.fil_ypol).all()
     ssl = loads(ub.sp_dat)
-    ssl["search"]["query"][ub.gbid:ub.gbid] = list(filter(lambda sd: sd not in ssl["search"]["query"], map(lambda g: g.bid, sorted(list(bl), key=lambda g: (arpho.grate_similarity(g.fil_fand, fi.fil_fand), g.search_grate(fi.fil_blacklist, fi.fil_typ_dc, fi.fil_typ_ff)), reverse=True))))
+    ssl["search"]["query"][ub.gbid:ub.gbid] = list(filter(lambda sd: sd not in ssl["search"]["query"], map(lambda g: g.bid, sorted(list(bl), key=lambda g: (arpho.grate_similarity(g.fil_fand, fi.fil_fand), g.search_grate(fi.fil_blacklist, fi.fil_typ_dc, fi.fil_typ_ff)), reverse=const.SEARCH_REVERSE_F))))
     end = datetime.now()
     ssl["search"]["time"] = round((end - start).total_seconds() * 1000 + (end - start).microseconds / 1000, 4)
     ub.sp_dat = dumps(ssl)
     DB_SESSION.commit()
 
 
-def get_se_rez(ub: User, n: int) -> int | None:
+def get_se_rez(ub: User, n: int) -> int | None:   # получить результат поиска
     ssl = loads(ub.sp_dat)
     return ssl["search"]["query"][ub.gbid] if 0 <= n < len(ssl["search"]["query"]) else None
 
 
-def clear_sl(ub: User):
+def clear_sl(ub: User):   # очистить результаты поиска
     ssl = loads(ub.sp_dat)
     ssl["search"]["query"] = []
     ub.sp_dat = dumps(ssl)
@@ -247,14 +269,14 @@ def clear_sl(ub: User):
 """____________________________________ membership + chat DB METHODS ____________________________________"""
 
 
-def reg_membership(uid: int, chid: int, owner=False):
+def reg_membership(uid: int, chid: int, owner=False):   # добавить члена чата
     ch = ChatMember(uid=uid, chid=chid, is_owner=owner, nickname=get_user_data(uid).nickname)
     DB_SESSION.query(Chat).filter(Chat.chid == chid).first().members_co += 1
     DB_SESSION.add(ch)
     DB_SESSION.commit()
 
 
-def reg_chat(uid: int, name: str) -> int:
+def reg_chat(uid: int, name: str) -> int:   # зарегистрировать чат
     c = Chat(title=name.lstrip("$"), is_writable=name.startswith("$"))
     DB_SESSION.add(c)
     DB_SESSION.commit()
@@ -264,39 +286,43 @@ def reg_chat(uid: int, name: str) -> int:
     return c.chid
 
 
-def get_games(uid: int) -> list[type[ChatMember]]:
+def get_games(uid: int) -> List[ChatMember]:   # получить все доступные пользователю игры
     return DB_SESSION.query(ChatMember).filter(ChatMember.uid == uid).all()
 
 
-def count_games(uid: int) -> int:
+def count_games(uid: int) -> int:   # посчитать количество доступных игр
     return DB_SESSION.query(ChatMember).filter(ChatMember.uid == uid).count()
 
 
-def get_membership(uid: int, chid: int) -> type[ChatMember]:
+def get_membership(uid: int, chid: int) -> ChatMember:   # получить данные участника чата
     return DB_SESSION.query(ChatMember).filter(ChatMember.uid == uid, ChatMember.chid == chid).first()
 
 
-def get_chat_data(chid: int) -> type[Chat]:
+def get_chat_data(chid: int) -> Chat:   # получить данные чата
     return DB_SESSION.query(Chat).filter(Chat.chid == chid).first()
 
 
-def get_waitingers(chid: int) -> list[type[ChatMember]]:
+def get_waitingers(chid: int) -> List[ChatMember]:   # получить ожидающих принятия в чат
     return DB_SESSION.query(ChatMember).filter(ChatMember.chid == chid, ChatMember.accepted != True, ChatMember.is_owner != True).all()
 
 
-async def clear_messages(chid: int):
+def count_waitingers(chid: int) -> int:   # посчитать ожидающих принятия в чат
+    return DB_SESSION.query(ChatMember).filter(ChatMember.chid == chid, ChatMember.accepted != True, ChatMember.is_owner != True).count()
+
+
+async def clear_messages(chid: int):   # очистить сообщения чата
     for i in DB_SESSION.query(Message).filter(Message.chid == chid).all():
         DB_SESSION.delete(i)
     DB_SESSION.commit()
 
 
-def del_chat(chid: int):
+def del_chat(chid: int):   # удалить чат
     DB_SESSION.delete(DB_SESSION.query(Chat).filter(Chat.chid == chid).first())
     DB_SESSION.commit()
     asyncio.create_task(clear_messages(chid))
 
 
-def del_member(uid: int, chid: int):
+def del_member(uid: int, chid: int):   # удалить участие в чате
     chat = get_chat_data(chid)
     chat.members_co -= 1
     if chat.members_co < 1:
@@ -305,55 +331,55 @@ def del_member(uid: int, chid: int):
     DB_SESSION.commit()
 
 
-def is_membership_exist(uid: int, chid: int) -> bool:
+def is_membership_exist(uid: int, chid: int) -> bool:   # проверить наличие членства в чате
     return DB_SESSION.query(ChatMember).filter(ChatMember.uid == uid, ChatMember.chid == chid).count() > 0
 
 
-def get_memberships(chid: int) -> list[type[ChatMember]]:
+def get_memberships(chid: int) -> List[ChatMember]:   # получить участников чата
     return DB_SESSION.query(ChatMember).filter(ChatMember.chid == chid).all()
 
 
-def is_chat_exist(chid: int) -> bool:
+def is_chat_exist(chid: int) -> bool:   # проверить существование чата
     return DB_SESSION.query(Chat).filter(Chat.chid == chid).count() > 0
 
 
-def is_message_exist(chid: int, mid: int) -> bool:
+def is_message_exist(chid: int, mid: int) -> bool:   # проверить существование сообщения
     return DB_SESSION.query(Message).filter(Message.chid == chid, Message.mid == mid).count() > 0
 
 
-def is_messages_exist(chid: int) -> bool:
+def is_messages_exist(chid: int) -> bool:   # проверить наличие сообщений в чате
     return DB_SESSION.query(Message).filter(Message.chid == chid).count() > 0
 
 
-def count_messages(chid: int) -> int:
+def count_messages(chid: int) -> int:   # посчитать сообщения
     return DB_SESSION.query(Message).filter(Message.chid == chid).count()
 
 
-def is_next_message_exist(chid: int, mid: int) -> bool:
+def is_next_message_exist(chid: int, mid: int) -> bool:   # существует ли следующее сообщение
     return DB_SESSION.query(Message).filter(Message.chid == chid, Message.mid > mid).count() > 0
 
 
-def is_before_message_exist(chid: int, mid: int) -> bool:
+def is_before_message_exist(chid: int, mid: int) -> bool:   # существует ли предыдущее сообщение
     return DB_SESSION.query(Message).filter(Message.chid == chid, Message.mid < mid).count() > 0
 
 
-def get_next_message_id(chid: int, mid: int) -> int:
+def get_next_message_id(chid: int, mid: int) -> int:   # получить id следующего сообщения
     return DB_SESSION.query(Message).filter(Message.chid == chid, Message.mid > mid).first().mid
 
 
-def get_before_message_id(chid: int, mid: int) -> int:
+def get_before_message_id(chid: int, mid: int) -> int:   # получить id предыдущего сообщения
     return DB_SESSION.query(Message).filter(Message.chid == chid, Message.mid < mid).all()[-1].mid
 
 
-def get_all_messages(chid: int) -> list[type[Message]]:
+def get_all_messages(chid: int) -> List[Message]:   # получить все сообщения
     return DB_SESSION.query(Message).filter(Message.chid == chid).all()
 
 
-def get_first_message_id(chid: int) -> int:
+def get_first_message_id(chid: int) -> int:   # получить id первого сообщения
     return DB_SESSION.query(Message).filter(Message.chid == chid).first().mid
 
 
-def reg_message(chid: int, uid: int, text: str):
+def reg_message(chid: int, uid: int, text: str):   # добавить сообщение
     chat = get_chat_data(chid)
     chat.last_sended = datetime.now()
     for mt in arpho.split_string(text, const.MAX_MESSAGE_LEN):
@@ -363,17 +389,17 @@ def reg_message(chid: int, uid: int, text: str):
     DB_SESSION.commit()
 
 
-def del_message(chid: int, mid: int):
+def del_message(chid: int, mid: int):   # удалить сообщение
     DB_SESSION.delete(DB_SESSION.query(Message).filter(Message.chid == chid, Message.mid == mid).first())
     get_chat_data(chid).messages_co -= 1
     DB_SESSION.commit()
 
 
-def get_message(chid: int, mid: int) -> type[Message]:
+def get_message(chid: int, mid: int) -> Message:   # получить сообщение
     return DB_SESSION.query(Message).filter(Message.chid == chid, Message.mid == mid).first()
 
 
-def should_notify_user(uid: int) -> bool:
+def should_notify_user(uid: int) -> bool:   # проверить следует ли уведомить пользователя
     ub = get_user_data(uid)
     da = loads(ub.sp_dat)
     rez = False
@@ -385,7 +411,7 @@ def should_notify_user(uid: int) -> bool:
     return rez
 
 
-def clear_should_notify_user(uid: int):
+def clear_should_notify_user(uid: int):   # очистить флаг уведомления пользователя
     ub = get_user_data(uid)
     da = loads(ub.sp_dat)
     da["chat_notify_flag"] = True
@@ -393,19 +419,19 @@ def clear_should_notify_user(uid: int):
     DB_SESSION.commit()
 
 
-def chat_binded_count(chid: int) -> int:
+def chat_binded_count(chid: int) -> int:   # проверить к скольким анкетам привязан чат
     return DB_SESSION.query(Blank).filter(Blank.chid == chid, Blank.exist_to_user, Blank.finished, Blank.publ).count()
 
 
-async def _manage_atc():
+async def _manage_atc():   # очистка лишних скомпилированных историй
     ldd = listdir(const.ROUTE_TO_CHAT_BUILD)
-    while len(ldd) > const.CLEAN_LIMIT:
+    while len(ldd) > 1:
         remove(f"{const.ROUTE_TO_CHAT_BUILD}/{ldd.pop(0)}")
 
 
-async def build_story(chid: int) -> str:
+async def build_story(chid: int) -> str:   # скомпилировать историю
     ch = get_chat_data(chid)
-    path = f"{const.ROUTE_TO_CHAT_BUILD}/chat_rv1_{chid}_{ch.messages_co}.txt"
+    path = f"{const.ROUTE_TO_CHAT_BUILD}/chat_rv2_{chid}_{ch.messages_co}_{ch.last_sended.strftime('%d,%m,%Y | %H:%M:%S')}.txt"
     if isfile(path):
         return path
     memb = get_memberships(chid)
@@ -414,6 +440,7 @@ async def build_story(chid: int) -> str:
         topik = f"[сгенерировано на основе чата '{ch.title}' ({chid})]\n" \
                 f"в ролях: {list(map(lambda g: g.nickname, memb))}\n" \
                 f"постов: {ch.messages_co}\n" \
+                f"последнее сообщение: {ch.last_sended.strftime('%d.%m.%Y | %H:%M:%S')}\n" \
                 f"отображение форматирования: html\n\n\n\n"
         file.write(topik)
     memb = dict(map(lambda obj: (obj.uid, obj.nickname), memb))

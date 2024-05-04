@@ -26,6 +26,7 @@ class User(SqlAlchemyBase):
     mmid = sqlalchemy.Column(sqlalchemy.Integer, default=0)   # id of last data
     mbid = sqlalchemy.Column(sqlalchemy.Integer, default=0)
     mfid = sqlalchemy.Column(sqlalchemy.Integer, default=0)
+    mpid = sqlalchemy.Column(sqlalchemy.Integer, default=0)
     beid_f = sqlalchemy.Column(sqlalchemy.Boolean, default=False)
     feid_f = sqlalchemy.Column(sqlalchemy.Boolean, default=False)
     gfid = sqlalchemy.Column(sqlalchemy.Integer, default=0)   # номер фильтра в поиске

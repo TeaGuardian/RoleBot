@@ -7,3 +7,4 @@ class Pin(SqlAlchemyBase):
     pid = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
     bid = sqlalchemy.Column(sqlalchemy.Integer, index=True)
     uid = sqlalchemy.Column(sqlalchemy.Integer)
+    notify = sqlalchemy.Column(sqlalchemy.Boolean, default=False)

@@ -4,6 +4,7 @@ morph = MorphAnalyzer()
 
 
 def distance(a: str, b: str) -> int:
+    """расстояние по левенштейну между строками"""
     n, m = len(a), len(b)
     if n > m:
         a, b = b, a
@@ -20,19 +21,22 @@ def distance(a: str, b: str) -> int:
 
 
 def grate_similarity(a: str, b: str) -> float:
+    """схожесть слов от 0 до 1, где 1 - полное совпадение"""
     if a is None or b is None:
         return 1
-    gd = round(distance(a, b) / max([len(a), len(b)]), 8)
+    gd = 1 - round(distance(a, b) / max([len(a), len(b)]), 8)
     return 0 if gd < const.INSEPTION_TEG_LIMIT else gd
 
 
 def desea(word: str, lis: list) -> (list, float):
+    """найти в списке самое подходящее слово, удалить его и вернуть новый список с оценкой схожести лучшего вхождения"""
     es = max(map(lambda g: (g, grate_similarity(g, word)), list), key=lambda g: g[1])
     lis.pop(lis.index(es[0]))
     return lis, es[1]
 
 
 def abl_str_chm(ins: str, key: str):
+    """устаревшая функция оценки схожести"""
     ins, key = ins.lower(), key.lower()
     repr, ablt = [], "!@#%^&*()_+=-;:'/.,|" + '"'
     rez = 0
@@ -42,8 +46,7 @@ def abl_str_chm(ins: str, key: str):
         if not wor:
             continue
         for d in ablt:
-            wor = wor.rstrip(d)
-            wor = wor.lstrip(d)
+            wor = wor.rstrip(d).lstrip(d)
         dhj = []
         for wor2 in ins.split():
             if not wor2:
@@ -93,6 +96,7 @@ def split_string(input_str: str, max_len: int, sep=" ", pre_p=20) -> list[str]:
 
 
 def check_word(word: str):
+    """выяснить чем является слово"""
     global morph
     if any(map(lambda g: g.isdigit(), word)):
         return "number"
@@ -105,7 +109,10 @@ def check_word(word: str):
 
 
 def check_text(text: str) -> [int, int, int, int, int]:
-    """all count, number, foreign, russian, other"""
+    """
+    all count, number, foreign, russian, other
+    статистика количества типов слов в тексте для оценки адекватности текста
+    """
     abtl = "!@#$%^&*()_+=-;:'/.,|" + '"'
     rez = [0, 0, 0, 0, 0]
     dr = ""

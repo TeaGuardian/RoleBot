@@ -92,7 +92,7 @@ async def _start(message: types.Message):
 @dp.message_handler(commands=['shutdown'])
 async def _turn_off(message: types.Message):
     global RUN, timeC
-    if str(message.from_user.id) == const.ADMIN and timeC.tk():
+    if is_user_have_role(message.from_user.id, "admin") and timeC.tk():
         RUN = False
         await bot.send_message(message.from_user.id, "goodby")
         write_log("turning off server", f"SERVER ({message.from_user.id})")
@@ -103,8 +103,8 @@ async def _turn_off(message: types.Message):
 async def _send_logs_h(message: types.Message):
     global RUN, timeC
     asyncio.create_task(delete_message(message))
-    if str(message.from_user.id) == const.ADMIN:
-        await send_logs([const.ADMIN])
+    if is_user_have_role(message.from_user.id, "admin"):
+        await send_logs(list(map(get_users_by_role("admin"))))
 
 
 @dp.message_handler(commands=['help'])

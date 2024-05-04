@@ -542,7 +542,7 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
     def _rv_se_show(ub: User):
         nonlocal text, agr
         fl = get_filters(ub.uid)
-        if len(fl) and ub.gfid <= len(fl):
+        if len(fl) and ub.gfid < len(fl):
             data = loads(ub.sp_dat)["search"]
             if not len(data['query']):
                 text = "Анкет не найдено! Пожалуйста, дождитесь полного запуска сервиса."
@@ -564,6 +564,14 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                    f"описание: {b.fil_des}\n" \
                    f"чат: {b.fil_chat if '$' in b.fil_chat else 'другое'} (можно будет присоедениться или прочесть после одобрения запроса на вступление)"
             agr = "✅" if b.publ and b.exist_to_user and b.uid != ub.uid and not is_membership_exist(ub.uid, b.chid) else ""
+            if agr == "":
+                text += "\n\n"
+                if b.uid == ub.uid:
+                    text += "это ваш бланк"
+                elif is_membership_exist(ub.uid, b.chid):
+                    text += "вы уже подали заявку"
+                else:
+                    text += "анкета удалена, или находиться в черновиках"
         else:
             text = "Выберите (создайте) фильтр, чтобы работать с поиском. (можно создать пустой) \n\n" + const.choice(const._static_about)
             agr = ""
@@ -610,6 +618,10 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
             asyncio.create_task(send_message_timed(ub.uid, "Ваша заявка отравлена, мы уведомим вас, когда её одобрят."))
             bl.publ = False
             reg_membership(ub.uid, bl.chid)
+            _rv_pin_show(ub)
+        else:
+            asyncio.create_task(send_message_timed(ub.uid, "К сожалению данный бланк уже не существует."))
+        call = "$root#search"
 
     def _rv_se_reload(ub: User):
         nonlocal call
@@ -799,6 +811,113 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
         call = "$game#chat"
         _rv_chat_show(ub)
 
+    """<-------------------------------- chat methods -------------------------------->"""
+
+    def _rv_pin_show(ub: User):
+        nonlocal text, agr
+        pi = get_pins(ub.uid)
+        if ub.mpid >= len(pi):
+            ub.mpid = len(pi) - 1
+            confirm_data_editing()
+        elif ub.mpid < 0:
+            ub.mpid = 0
+            confirm_data_editing()
+        if len(pi) and ub.mpid < len(pi):
+            if not is_blank_exist_sp2(pi[ub.mpid].bid):
+                text = f"Данный бланк не удалось получить (bid: {pi[ub.mbid].bid})."
+                agr = ""
+                return False
+            if not is_blank_exist_sp(pi[ub.mpid].bid):
+                agr = ""
+            b = get_blank(pi[ub.mpid].bid)
+            text = f"закреплено ({ub.mpid + 1} / {len(pi)})\n" \
+                   f"бланк {b.bid} ({'активно' if b.publ else 'черновик'})\n" \
+                   f"имя: {b.fil_name} ({dpp[b.fil_ypol]})\n" \
+                   f"фандом: {b.fil_fand}\n" \
+                   f"теги: {b.fil_typ}\n" \
+                   f"искомый: {b.fil_tmp}\n" \
+                   f"рейтинг: {dpp[b.fil_rate]}\n" \
+                   f"просмотры: {b.views}\n" \
+                   f"описание: {b.fil_des}\n" \
+                   f"чат: {b.fil_chat if '$' in b.fil_chat else 'другое'} (можно будет присоедениться или прочесть после одобрения запроса на вступление)"
+            agr = "✅" if b.publ and b.exist_to_user and b.uid != ub.uid and not is_membership_exist(ub.uid, b.chid) else ""
+            if agr == "":
+                text += "\n\n"
+                if b.uid == ub.uid:
+                    text += "это ваш бланк"
+                elif is_membership_exist(ub.uid, b.chid):
+                    text += "вы уже подали заявку"
+                else:
+                    text += "анкета удалена, или находиться в черновиках"
+        else:
+            text = "у вас пока нет закреплённых бланков \n\n" + const.choice(const._static_about)
+            agr = ""
+
+    def _rv_pin_pl(ub: User):
+        nonlocal call
+        pins = get_pins(ub.uid)
+        if pins and 0 <= ub.mpid < len(pins):
+            if ub.mpid + 1 < len(pins):
+                ub.mpid += 1
+                confirm_data_editing()
+                _rv_pin_show(ub)
+            confirm_data_editing()
+        call = "$root#pinned"
+
+    def _rv_pin_mi(ub: User):
+        nonlocal call
+        pins = get_pins(ub.uid)
+        if pins and 0 <= ub.mpid < len(pins):
+            if ub.mpid - 1 >= 0:
+                ub.mpid -= 1
+                confirm_data_editing()
+                _rv_pin_show(ub)
+            confirm_data_editing()
+        call = "$root#pinned"
+
+    def _rv_pin_del(ub: User):
+        nonlocal call
+        pins = get_pins(ub.uid)
+        if pins:
+            delete_pin(ub.uid, pins[ub.mpid].pid)
+            _rv_pin_mi(ub)
+            _rv_pin_show(ub)
+        call = "$root#pinned"
+
+    def _rv_pin_ac(ub: User):
+        nonlocal call
+        pins = get_pins(ub.uid)
+        if is_blank_exist_sp(pins[ub.mpid]):
+            bl = get_blank(pins[ub.mpid].bid)
+            for mem in get_memberships(bl.chid):
+                if mem.is_owner or mem.accepted:
+                    asyncio.create_task(
+                        send_message(mem.uid, f"Поступила заявка на бланк ({bl.fil_name}) от [{ub.nickname}].\n"
+                                              f"Бланк перемещён в черновик, чтобы привязать его к тому же чату - найдите чат среди игр и нажмите '🪶'.",
+                                     notify=None if get_user_data(mem.uid).notify_c else True))
+            asyncio.create_task(send_message_timed(ub.uid, "Ваша заявка отравлена, мы уведомим вас, когда её одобрят."))
+            bl.publ = False
+            reg_membership(ub.uid, bl.chid)
+            _rv_pin_show(ub)
+        elif is_blank_exist_sp2(pins[ub.mpid].bid):
+            asyncio.create_task(send_message_timed(ub.uid, "К сожалению данный бланк пока в черновиках, на него нельзя ответить."))
+        else:
+            asyncio.create_task(send_message_timed(ub.uid, "К сожалению данный бланк уже не существует."))
+        call = "$root#search"
+
+    def _rv_pin_bl(ub: User):
+        nonlocal call
+        data = loads(ub.sp_dat)["search"]
+        if len(data['query']) and 0 < ub.gbid < len(data['query']):
+            if is_blank_exist_sp2(data['query'][ub.gbid]) and not is_blank_pinned(data['query'][ub.gbid]):
+                pin(ub.uid, data['query'][ub.gbid])
+                _rv_se_show(ub)
+                asyncio.create_task(send_message_timed(ub.uid, "Успешно закреплено."))
+            else:
+                asyncio.create_task(send_message_timed(ub.uid, "К сожалению нельзя закрепить."))
+        call = "$root#search"
+
+
     a = {"text": "✅", "callback_data": ""}
     if call == "register" and not is_user_exist(uid):
         reg_user(uid, "@" + user_obj.username)
@@ -820,7 +939,9 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
             "$root#search": _rv_se_show, "$do#search-1": _rv_se_mi, "$do#search+1": _rv_se_pl, "$do#accept_se": _rv_se_ac,
             "$do#game-1": _rv_ga_mi, "$do#game+1": _rv_ga_pl, "$root#games": _rv_ga_show, "$do#bind_ga": _rv_ga_bind,
             "$do#chat-1": _rv_ch_mi, "$do#chat+1": _rv_ch_pl, "$do#open_ga": _rv_ch_op, "$do#delete_ga": _rv_ga_del,
-            "$do#notify_ga": _rv_ga_ntc, "$do#delete_msg": _rv_chat_del_msg, "$do#reload_se": _rv_se_reload}
+            "$do#notify_ga": _rv_ga_ntc, "$do#delete_msg": _rv_chat_del_msg, "$do#reload_se": _rv_se_reload,
+            "$root#pinned": _rv_pin_show, "$do#pinned-1": _rv_pin_mi, "$do#pinned+1": _rv_pin_pl, "$do#accept_ga": _rv_pin_ac,
+            "$do#delete_pi": _rv_pin_del, "$do#pin_se": _rv_pin_bl}
     if call.startswith("$root#"):
         user.beid_f = False
         user.feid_f = False
@@ -910,7 +1031,7 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                                                 {"text": "🔙", "callback_data": "$root#games"}]]},
             "$root#pinned": {"disp": "", "var": [[{"text": "⬅️", "callback_data": "$do#pinned-1"},
                                                   {"text": "➡️", "callback_data": "$do#pinned+1"}],
-                                                 [{"text": "✅", "callback_data": "$do#accept_ga"},
+                                                 [{"text": agr, "callback_data": "$do#accept_ga"},
                                                   {"text": "🗑", "callback_data": "$do#delete_pi"},
                                                   {"text": "🔙", "callback_data": "$root#start"}]]}
             }

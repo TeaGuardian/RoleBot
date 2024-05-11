@@ -41,6 +41,7 @@ ROUTE_TO_BACKUP = "data/backup.json"
 ROUTE_TO_LOGS = "data/logs.txt"
 ROUTE_TO_CHAT_BUILD = "data/chats"
 ENCODING = "UTF-8"
+ROLES = ["admin", "user"]
 
 if not isdir("data"):
     mkdir("data")

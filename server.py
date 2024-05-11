@@ -90,6 +90,21 @@ async def _start(message: types.Message):
         write_log(f"{message.from_user.id}, pressed stsrt! waiting connection", obj="f-START command")
 
 
+@dp.message_handler(commands=['main_notification'])
+async def _main_notification(message: types.Message):
+    if is_user_have_role(message.from_user.id, "admin"):
+        write_log(message.html_text, f"main_notification started by {message.from_user.id}")
+        for role in const.ROLES:
+            for user in get_users_by_role(role):
+                try:
+                    await bot.send_message(user.uid, message.html_text.lstrip('main_notification'),
+                                           reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}]]),
+                                           disable_notification=not user.notify_i)
+                except Exception as e:
+                    await errors_handler("main_notification", e)
+        asyncio.create_task(send_message_timed(message.from_user.id, "завершено!", 10))
+
+
 @dp.message_handler(commands=['shutdown'])
 async def _turn_off(message: types.Message):
     global RUN, timeC

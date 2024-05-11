@@ -5,13 +5,14 @@ source code for tg: @tea_guardian_bot   (only RU edition)
 <p style="font-size: 16px;">Проект представляет из себя рп-сервис с доступом через телеграмм-бота.</p>
 <p style="font-size: 16px;">Все исходники находятся в открытом доступе и обнавляются при выходе новой версии.</p>
 <p style="font-size: 16px;">оригинальный бот: @tea_guardian_bot</p>
-<p style="font-size: 16px;">текущая версия: v0.1.3</p>
+<p style="font-size: 16px;">текущая версия: v0.1.4</p>
 <h1>Функционал:</h1>
 <ul>
 <li style="font-size: 16px;">обширные настройки внутреннего профиля</li>
 <li style="font-size: 16px;">создание и редактирование анкет</li>
 <li style="font-size: 16px;">создание и редактирование фильтров</li>
 <li style="font-size: 16px;">поиск анкет по фильтру</li>
+<li style="font-size: 16px;">уведомления о выходе новых бланков, удовлетворяющих фильтру</li>
 <li style="font-size: 16px;">закрепление понравившихся анкет</li>
 <li style="font-size: 16px;">подача заявки на анкету</li>
 <li style="font-size: 16px;">внутренний анонимный чат для общения по анкете</li>
@@ -19,7 +20,6 @@ source code for tg: @tea_guardian_bot   (only RU edition)
 </ul>
 <h1>Функционал в разработке:</h1>
 <ul>
-<li style="font-size: 16px;">уведомления о выходе новых бланков, удовлетворяющих фильтру</li>
 <li style="font-size: 16px;">социальный и грамматический рейтинги пользователя</li>
 <li style="font-size: 16px;">возможность жалоб и оценок</li>
 <li style="font-size: 16px;">возможность импорта и экспорта профиля</li>

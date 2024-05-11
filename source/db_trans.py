@@ -448,7 +448,7 @@ def should_notify_user(uid: int, from_chid: int) -> bool:   # проверить
 
 def clear_should_notify_user(uid: int):   # очистить флаг уведомления пользователя
     for memb in get_games(uid):
-        memb.notify = False
+        memb.notified = False
     DB_SESSION.commit()
 
 

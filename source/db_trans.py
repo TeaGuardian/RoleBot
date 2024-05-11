@@ -292,7 +292,7 @@ async def search_to_notify(bid: int, notify_func, timed_func):
                 asyncio.create_task(notify_func(fi.uid, "Уведомление от одного из ваших фильтров, хотите посмотреть?", [{"text": "открыть", "callback_data": f"$do#openblank^{bl.bid}"}]))
                 uids.append(fi.uid)
     if uids:
-        asyncio.create_task(timed_func(bl.uid, f"О вашем бланке уже знают {len(uids)} {arpho.agree_with_number('пользователь', len(uids))}.", 10))
+        asyncio.create_task(timed_func(bl.uid, f"О вашем бланке уже {arpho.agree_with_number('знает', len(uids))} {len(uids)} {arpho.agree_with_number('пользователь', len(uids))}.", 10))
 
 
 """____________________________________ membership + chat DB METHODS ____________________________________"""

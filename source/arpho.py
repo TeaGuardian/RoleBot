@@ -35,6 +35,10 @@ def desea(word: str, lis: list) -> (list, float):
     return lis, es[1]
 
 
+def agree_with_number(word: str, number: int) -> str:
+    return morph.parse(word)[0].make_agree_with_number(number).word
+
+
 def abl_str_chm(ins: str, key: str):
     """устаревшая функция оценки схожести"""
     ins, key = ins.lower(), key.lower()

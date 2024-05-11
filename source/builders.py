@@ -31,7 +31,11 @@ async def send_message(uid: int, text: str, notify=None):
 
 
 async def send_message_timed(uid: int, text: str, time=20):
-    await delete_message(await bot.send_message(uid, text))
+    await delete_message(await bot.send_message(uid, text), time)
+
+
+async def hideable_message(uid: int, text: str, buttons=()):
+    await bot.send_message(uid, text, reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}, *buttons]]))
 
 
 dpp = {"$sp^pg": "PG",
@@ -112,7 +116,8 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                    f"рейтинг: {dpp[b.fil_rate]}\n" \
                    f"просмотры: {b.views}\n" \
                    f"описание: {des if des else b.fil_des}\n" \
-                   f"чат: {b.fil_chat}"
+                   f"чат: {b.fil_chat}\n" \
+                   f"👍 {b.score_pl} | {round(b.score_pl / (b.score_pl + b.score_mi) * 100, 1) if (b.score_pl + b.score_mi) else 0}% | 👎 {b.score_mi}"
 
     def _rv_add_bl(ub: User):
         nonlocal call
@@ -322,6 +327,7 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                         b.views = 0
                         confirm_data_editing()
                         _rv_show_bl(ub)
+                        asyncio.create_task(search_to_notify(b.bid, hideable_message, send_message_timed))
                     else:
                         if ub.state == "bind_blank":
                             asyncio.create_task(send_message_timed(ub.uid, "Привязка невозможна, бланк не завершён."))
@@ -366,7 +372,22 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                    f"Сортировать по: {ff.fil_typ_ff if ff.fil_typ_ff is not None else '<b>---</b>'}\n" \
                    f"Обязательно: {ff.fil_typ_dc if ff.fil_typ_dc is not None else '<b>---</b>'}\n" \
                    f"Недопустимо: {ff.fil_blacklist if ff.fil_blacklist is not None else '<b>---</b>'}\n" \
-                   f"Возрастное: {ff.fil_rate if ff.fil_rate is not None else '<b>-все-</b>'}"
+                   f"Возрастное: {ff.fil_rate if ff.fil_rate is not None else '<b>-все-</b>'}\n" \
+                   f"\nУведомления о новых анкетах: {'✅' if ff.notify else '❌'}"
+
+    def _rv_fl_ch_not(ub: User):
+        nonlocal call
+        fl = get_filters(ub.uid)
+        if fl:
+            if ub.mfid >= len(fl):
+                ub.mfid = len(fl) - 1
+            if ub.mfid < 0:
+                ub.mfid = 0
+            ff = fl[ub.mfid]
+            ff.notify = not ff.notify
+            confirm_data_editing()
+            _rv_fl_show(ub)
+        call = "$root#filters"
 
     def _rv_fl_add(ub: User):
         nonlocal call
@@ -562,12 +583,15 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                    f"рейтинг: {dpp[b.fil_rate]}\n" \
                    f"просмотры: {b.views}\n" \
                    f"описание: {b.fil_des}\n" \
-                   f"чат: {b.fil_chat if '$' in b.fil_chat else 'другое'} (можно будет присоедениться или прочесть после одобрения запроса на вступление)"
+                   f"чат: {b.fil_chat if '$' in b.fil_chat else 'другое'} (можно будет присоедениться или прочесть после одобрения запроса)\n\n" \
+                   f"👍 {b.score_pl} | {round(b.score_pl / (b.score_pl + b.score_mi) * 100, 1) if (b.score_pl + b.score_mi) else 0}% | 👎 {b.score_mi}"
             agr = "✅" if b.publ and b.exist_to_user and b.uid != ub.uid and not is_membership_exist(ub.uid, b.chid) else ""
             if agr == "":
                 text += "\n\n"
                 if b.uid == ub.uid:
                     text += "это ваш бланк"
+                elif len(get_waitingers(ub.uid)) >= const.USER_WAIT_LIMIT:
+                    text += "число заявок на этот бланк уже превышено"
                 elif is_membership_exist(ub.uid, b.chid):
                     text += "вы уже подали заявку"
                 else:
@@ -585,8 +609,9 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                 b = get_blank(qu[ub.gbid])
                 if b.uid != ub.uid:
                     b.views += 1
-            asyncio.create_task(find_blanks(ub.uid, fl[ub.gfid].fid, qu))
             ub.gbid += 1
+            if len(fl) - ub.gfid - 1 < const.SEARCH_RN_LIMIT:
+                asyncio.create_task(find_blanks(ub.uid, fl[ub.gfid].fid, qu))
         _rv_se_show(ub)
         confirm_data_editing()
         call = "$root#search"
@@ -600,7 +625,7 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                 b = get_blank(qu[ub.gbid])
                 if b.uid != ub.uid:
                     b.views += 1
-            asyncio.create_task(find_blanks(ub.uid, fl[ub.gfid].fid, qu))
+            #asyncio.create_task(find_blanks(ub.uid, fl[ub.gfid].fid, qu))
             ub.gbid -= 1
         _rv_se_show(ub)
         confirm_data_editing()
@@ -611,14 +636,17 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
         data = loads(ub.sp_dat)["search"]["query"]
         if is_blank_exist_sp(data[ub.gbid]):
             bl = get_blank(data[ub.gbid])
-            for mem in get_memberships(bl.chid):
-                if mem.is_owner or mem.accepted:
-                    asyncio.create_task(send_message(mem.uid, f"Поступила заявка на бланк ({bl.fil_name}) от [{ub.nickname}].\n"
-                                                              f"Бланк перемещён в черновик, чтобы привязать его к тому же чату - найдите чат среди игр и нажмите '🪶'.", notify=None if get_user_data(mem.uid).notify_c else True))
-            asyncio.create_task(send_message_timed(ub.uid, "Ваша заявка отравлена, мы уведомим вас, когда её одобрят."))
-            bl.publ = False
-            reg_membership(ub.uid, bl.chid)
-            _rv_pin_show(ub)
+            if len(get_waitingers(bl.chid)) <= const.USER_WAIT_LIMIT:
+                for mem in get_memberships(bl.chid):
+                    if mem.is_owner or mem.accepted:
+                        asyncio.create_task(send_message(mem.uid, f"Поступила заявка на бланк ({bl.fil_name}) от [{ub.nickname}].\n"
+                                                                  f"Бланк перемещён в черновик, чтобы привязать его к тому же чату - найдите чат среди игр и нажмите '🪶'.", notify=None if get_user_data(mem.uid).notify_c else True))
+                asyncio.create_task(send_message_timed(ub.uid, "Ваша заявка отравлена, мы уведомим вас, когда её одобрят."))
+                bl.publ = False
+                reg_membership(ub.uid, bl.chid)
+                _rv_pin_show(ub)
+            else:
+                asyncio.create_task(send_message_timed(ub.uid, "Простите, на этот бланк превышено число заявок."))
         else:
             asyncio.create_task(send_message_timed(ub.uid, "К сожалению данный бланк уже не существует."))
         call = "$root#search"
@@ -645,13 +673,14 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
         confirm_data_editing()
         if len(ga) and len(ga) > ub.gsel and is_chat_exist(ga[ub.gsel].chid):
             chat = get_chat_data(ga[ub.gsel].chid)
+            waitengers = get_waitingers(ga[ub.gsel].chid)
             text = f"game {ub.gsel + 1} / {len(ga)}\n" \
                    f"ваше имя: {ga[ub.gsel].nickname if ga[ub.gsel].nickname is not None else '-имя отсутствует-'}\n" \
                    f"к чату привязано анкет: {chat_binded_count(chat.chid)}\n" \
                    f"сообщений: {chat.messages_co}{' (есть непрочитанные)' if is_next_message_exist(chat.chid, ga[ub.gsel].cursor) else ''}\n" \
                    f"последнее: {chat.last_sended.strftime('%d.%m.%Y %H:%M')}\n" \
-                   f"пользователи (+ заявки): {chat.members_co}\n" \
-                   f"уведомления сообщений: {'включены' if ga[ub.gsel].notify else 'выключены'}\n" \
+                   f"пользователи (+ заявки): {chat.members_co - len(waitengers)} + {len(waitengers)}\n" \
+                   f"уведомления сообщений: {'✅' if ga[ub.gsel].notify else '❌'}\n" \
                    f"{'чат не поддерживает сообщения' if not chat.is_writable else 'откройте чат [<b>' + chat.title + '</b>], чтобы писать'}\n" \
                    f"{'вы участник чата' if ga[ub.gsel].accepted or ga[ub.gsel].is_owner else 'Простите, вы пока не можете использовать чат.'}\n"
             if ga[ub.gsel].accepted or ga[ub.gsel].is_owner:
@@ -659,7 +688,7 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                         "убедитесь, что все поля заполнены, название чата будет унаследовано от чата независимо от " \
                         "поля бланка) и нажмите на редактирование (🪶), после чего вам предложат привязать бланк."
                 agr = "✅ открыть"
-                for waiter in get_waitingers(ga[ub.gsel].chid):
+                for waiter in waitengers:
                     name = get_user_data(waiter.uid).nickname if waiter.nickname is None else waiter.nickname
                     upd_b.append([{"text": str(name), "callback_data": "$root#games"}, {"text": "❌", "callback_data": f"$do#sp#cl:{waiter.uid}"}, {"text": "✅", "callback_data": f"$do#sp#ac:{waiter.uid}"}])
             else:
@@ -780,7 +809,9 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
 
     def _rv_ga_del(ub: User):
         nonlocal call
-        del_member(ub.uid, get_games(ub.uid)[ub.gsel].chid)
+        ga = get_games(ub.uid)
+        if len(ga) > ub.gsel >= 0:
+            del_member(ub.uid, ga[ub.gsel].chid)
         call = "$root#games"
         _rv_ga_show(ub)
 
@@ -811,7 +842,7 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
         call = "$game#chat"
         _rv_chat_show(ub)
 
-    """<-------------------------------- chat methods -------------------------------->"""
+    """<-------------------------------- pin methods -------------------------------->"""
 
     def _rv_pin_show(ub: User):
         nonlocal text, agr
@@ -839,7 +870,8 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                    f"рейтинг: {dpp[b.fil_rate]}\n" \
                    f"просмотры: {b.views}\n" \
                    f"описание: {b.fil_des}\n" \
-                   f"чат: {b.fil_chat if '$' in b.fil_chat else 'другое'} (можно будет присоедениться или прочесть после одобрения запроса на вступление)"
+                   f"чат: {b.fil_chat if '$' in b.fil_chat else 'другое'} (можно будет присоедениться или прочесть после одобрения запроса на вступление)\n" \
+                   f"👍 {b.score_pl} | {round(b.score_pl / (b.score_pl + b.score_mi) * 100, 1) if (b.score_pl + b.score_mi) else 0}% | 👎 {b.score_mi}"
             agr = "✅" if b.publ and b.exist_to_user and b.uid != ub.uid and not is_membership_exist(ub.uid, b.chid) else ""
             if agr == "":
                 text += "\n\n"
@@ -908,7 +940,7 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
     def _rv_pin_bl(ub: User):
         nonlocal call
         data = loads(ub.sp_dat)["search"]
-        if len(data['query']) and 0 < ub.gbid < len(data['query']):
+        if len(data['query']) and 0 <= ub.gbid < len(data['query']):
             if is_blank_exist_sp2(data['query'][ub.gbid]) and not is_blank_pinned(data['query'][ub.gbid]):
                 pin(ub.uid, data['query'][ub.gbid])
                 _rv_se_show(ub)
@@ -916,6 +948,23 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
             else:
                 asyncio.create_task(send_message_timed(ub.uid, "К сожалению нельзя закрепить."))
         call = "$root#search"
+
+    def _open_blank(ub: User, bid: int):
+        if is_blank_exist_sp(bid):
+            irn = find_in_se(ub, bid)
+            if irn is None:
+                ssl = loads(ub.sp_dat)
+                ssl["search"]["query"].append(bid)
+                ssl["search"]["time"] = 0
+                ub.sp_dat = dumps(ssl)
+                ub.gbid = len(ssl["search"]["query"]) - 2
+                confirm_data_editing()
+            else:
+                ub.gbid = irn - 1
+                confirm_data_editing()
+            _rv_se_pl(ub)
+        else:
+            asyncio.create_task(send_message_timed(ub.uid, "К сожалению данный бланк уже не существует."))
 
 
     a = {"text": "✅", "callback_data": ""}
@@ -941,7 +990,7 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
             "$do#chat-1": _rv_ch_mi, "$do#chat+1": _rv_ch_pl, "$do#open_ga": _rv_ch_op, "$do#delete_ga": _rv_ga_del,
             "$do#notify_ga": _rv_ga_ntc, "$do#delete_msg": _rv_chat_del_msg, "$do#reload_se": _rv_se_reload,
             "$root#pinned": _rv_pin_show, "$do#pinned-1": _rv_pin_mi, "$do#pinned+1": _rv_pin_pl, "$do#accept_ga": _rv_pin_ac,
-            "$do#delete_pi": _rv_pin_del, "$do#pin_se": _rv_pin_bl}
+            "$do#delete_pi": _rv_pin_del, "$do#pin_se": _rv_pin_bl, "$do#notify_fe": _rv_fl_ch_not}
     if call.startswith("$root#"):
         user.beid_f = False
         user.feid_f = False
@@ -949,7 +998,10 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
         clear_should_notify_user(user.uid)
         if call == "$root#start":
             user.state = ""
+            asyncio.create_task(clear_filters_to_notify(user.uid))
         confirm_data_editing()
+    elif call.startswith("$do#openblank^"):
+        _open_blank(user, int(call.lstrip("$do#openblank^")))
     if call in do_l.keys():
         do_l[call](user)
     if user.beid_f:
@@ -1006,7 +1058,8 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                                                    {"text": "➡️", "callback_data": "$do#filters+1"}],
                                                   [{"text": agr, "callback_data": "$do#accept_fl"},
                                                    {"text": "🗑", "callback_data": "$do#delete_fe"},
-                                                   {"text": "🔙", "callback_data": "$root#start"}]]},
+                                                   {"text": "🔙", "callback_data": "$root#start"},
+                                                   {"text": '🔔', "callback_data": "$do#notify_fe"}]]},
             "$root#blanks": {"disp": "", "var": [[{"text": "⬅️", "callback_data": "$do#blanks-1"},
                                                   {"text": "➕", "callback_data": "$do#add_blank"},
                                                   {"text": "🪶", "callback_data": "$blank#edit"},

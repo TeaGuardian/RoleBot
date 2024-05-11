@@ -25,12 +25,14 @@ class Blank(SqlAlchemyBase):
     finished = sqlalchemy.Column(sqlalchemy.Boolean, default=False)
     state = sqlalchemy.Column(sqlalchemy.Integer, default=0)
     views = sqlalchemy.Column(sqlalchemy.Integer, default=0)
+    score_mi = sqlalchemy.Column(sqlalchemy.Integer, default=0)
+    score_pl = sqlalchemy.Column(sqlalchemy.Integer, default=0)
 
-    def search_grate(self, blacklist, whitelist, search):
+    def search_grate(self, blacklist, whitelist, search, limited=False):
         bl = [] if blacklist is None else map(lambda g: g.rstrip(" ").lstrip(" "), blacklist.split(","))
         wl = [] if whitelist is None else list(map(lambda g: g.rstrip(" ").lstrip(" "), whitelist.split(",")))
         se = [] if search is None else list(map(lambda g: g.rstrip(" ").lstrip(" "), search.split(",")))
-        rez = 0
+        rez, count = 0, 0
         for word in map(lambda g: g.rstrip(" ").lstrip(" "), self.fil_typ.__str__().split(",")):
             if any(map(lambda g: grate_similarity(g, word) >= WORD_THRESHOLD_LIMIT, bl)):
                 return 0
@@ -42,7 +44,10 @@ class Blank(SqlAlchemyBase):
                 al, ad = desea(word, se.copy())
                 if ad >= INSEPTION_TEG_LIMIT:
                     rez += ad
+                    count += 1
                     se = al.copy()
+        if limited and count > 0:
+            return round(rez / count, 6)
         return rez
 
 

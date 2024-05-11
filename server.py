@@ -2,6 +2,7 @@ from aiogram import Bot, Dispatcher, types, executor
 from aiogram.dispatcher.filters import IDFilter
 from source.builders import *
 from os.path import getsize
+from copy import deepcopy
 import asyncio
 import sys
 from time import time
@@ -104,13 +105,25 @@ async def _send_logs_h(message: types.Message):
     global RUN, timeC
     asyncio.create_task(delete_message(message))
     if is_user_have_role(message.from_user.id, "admin"):
-        await send_logs(list(map(get_users_by_role("admin"))))
+        await send_logs(list(map(lambda g: g.uid, get_users_by_role("admin"))))
 
 
 @dp.message_handler(commands=['help'])
 async def _help_f(message: types.Message):
     await bot.send_message(message.from_user.id, const.help_mes, parse_mode=types.ParseMode.HTML, reply_markup=special_but_conv([[{"text": "скрыть подсказку", "callback_data": "$delite_this_message"}]]))
     asyncio.create_task(delete_message(message))
+
+
+@dp.message_handler(commands=['cancel'])
+async def _cancel(message: types.Message):
+    if is_user_exist(message.from_user.id):
+        user = get_user_data(message.from_user.id)
+        if user.state == "bugreport":
+            asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "отменено")))
+            await bot.delete_message(chat_id=message.from_user.id, message_id=message.message_id)
+            user.state = ""
+            confirm_data_editing()
+    asyncio.create_task(delete_message(message, 6))
 
 
 @dp.message_handler(commands=['download'])
@@ -133,7 +146,11 @@ async def _change_nickname(message: types.Message):
     if is_user_exist(message.from_user.id):
         get_user_data(message.from_user.id).state = "SetNickname"
         confirm_data_editing()
-        asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "Введите новый никнейм (не более 20 символов)."), 6))
+        if 15 + const.MAX_TITLES_LEN > len(message.text) > 13:
+            message.text = message.text.lstrip("/SetNickname")
+            await _catch(message, summoned=True)
+        else:
+            asyncio.create_task(send_message_timed(message.from_user.id, f"Введите новый никнейм (не более {const.MAX_TITLES_LEN} символов).", 6))
     asyncio.create_task(delete_message(message))
 
 
@@ -142,22 +159,27 @@ async def _change_local_nickname(message: types.Message):
     if is_user_exist(message.from_user.id) and len(get_games(message.from_user.id)):
         get_user_data(message.from_user.id).state = "SetLocalNickname"
         confirm_data_editing()
-        asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "Введите новый никнейм (не более 20 символов)."), 6))
+        if 20 + const.MAX_TITLES_LEN > len(message.text) > 18:
+            message.text = message.text.lstrip("/SetLocalNickname")
+            await _catch(message, summoned=True)
+        else:
+            asyncio.create_task(send_message_timed(message.from_user.id, f"Введите новый никнейм (не более {const.MAX_TITLES_LEN} символов).", 6))
     else:
-        asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "У вас нет игр."), 6))
+        asyncio.create_task(send_message_timed(message.from_user.id, "У вас нет игр.", 6))
     asyncio.create_task(delete_message(message))
 
 
 @dp.callback_query_handler()
 async def _process_callback(callback_query: types.CallbackQuery):
     global dpp
-    if time() - callback_query.message.date.timestamp() >= 60 * 60 * 24 * 1.5:
-        asyncio.create_task(delete_message(await bot.send_message(callback_query.from_user.id, "Простите, это меню устарело, удалите его и выберите /start ."), 60))
-        return False
     if callback_query.data == "$delite_this_message":
-        await callback_query.message.delete()
-        if is_user_exist(callback_query.from_user.id):
-            clear_should_notify_user(callback_query.from_user.id)
+        try:
+            await callback_query.message.delete()
+        except Exception as e:
+            asyncio.create_task(send_message_timed(callback_query.from_user.id, "Извините, это сообщение можете удалить только вы.", 2))
+        return False
+    if time() - callback_query.message.date.timestamp() >= 60 * 60 * 24 * 1.8:
+        asyncio.create_task(send_message_timed(callback_query.from_user.id, "Простите, это меню устарело, удалите его и выберите /start .", 20))
         return False
     if is_user_exist(callback_query.from_user.id):
         user = get_user_data(callback_query.from_user.id)
@@ -208,20 +230,18 @@ async def _process_callback(callback_query: types.CallbackQuery):
 
 
 @dp.message_handler()
-async def _catch(message: types.Message):
+async def _catch(message: types.Message, summoned=False):
     if is_user_exist(message.from_user.id):
         if len(message.text) < 2:
             message.text = ""
         user = get_user_data(message.from_user.id)
         user.last_message = message.text
         user.last_active = datetime.now()
+        qr = types.CallbackQuery()
+        qr.from_user = deepcopy(message.from_user)
+        qr.message = deepcopy(message)
+        qr.message.message_id = user.mmid
         if user.state == "bugreport":
-            if message.text == "/cancel":
-                mes = await bot.send_message(message.from_user.id, "отменено")
-                asyncio.create_task(delete_message(mes))
-                await bot.delete_message(chat_id=message.from_user.id, message_id=message.message_id)
-                user.state = ""
-                return 1
             t = f"bugreport from {message.from_user.id}: {message.text}"
             await bot.send_message(const.ADMIN, t)
             write_log(t, "bugreport - @" + message.from_user.username)
@@ -229,25 +249,31 @@ async def _catch(message: types.Message):
             asyncio.create_task(delete_message(mes))
             user.state = ""
             user.last_call = datetime.now()
+            confirm_data_editing()
         bt, tt = build_menu(message.from_user, bot, message.text)
         if bt is not None and len(tt):
             await bot.edit_message_text(text=tt, chat_id=message.from_user.id, message_id=user.mmid, reply_markup=bt)
         if user.state == "SetNickname":
             user.state = ""
-            if len(message.text) > 26:
-                asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, f"Слишком длинное ({len(message.text)} / 26).")))
+            if len(message.text) > const.MAX_TITLES_LEN:
+                asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, f"Слишком длинное ({len(message.text)} / {const.MAX_TITLES_LEN}).")))
             else:
                 user.nickname = message.text
+                qr.data = "$root#settings"
+                asyncio.create_task(send_message_timed(message.from_user.id, "Готово.", 3))
+                await _process_callback(qr)
             confirm_data_editing()
         if user.state == "SetLocalNickname":
             ga = get_games(user.uid)
             user.state = ""
             if len(ga) > user.gsel >= 0:
-                if len(message.text) > 26:
-                    asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, f"Слишком длинное ({len(message.text)} / 26).")))
+                if len(message.text) > const.MAX_TITLES_LEN:
+                    asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, f"Слишком длинное ({len(message.text)} / {const.MAX_TITLES_LEN}).")))
                 else:
                     asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "Готово.")))
                     get_membership(user.uid, ga[user.gsel].chid).nickname = message.text if message.text and message.text not in ["None", "none"] else None
+                    qr.data = "$root#games"
+                    await _process_callback(qr)
                 confirm_data_editing()
         if user.game_f and len(message.text) >= 2:
             chat = get_games(user.uid)[user.gsel]
@@ -260,9 +286,9 @@ async def _catch(message: types.Message):
                 reg_message(get_games(user.uid)[user.gsel].chid, user.uid, message.html_text)
                 asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "отправлено")))
                 for memb in get_memberships(chat.chid):
-                    if is_user_exist(memb.uid) and not get_user_data(memb.uid).game_f and memb.notify and (memb.accepted or memb.is_owner):
-                        if should_notify_user(memb.uid):
-                            await bot.send_message(memb.uid, "у вас есть непрочитанные сообщения", reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}]]))
+                    if is_user_exist(memb.uid) and memb.notify and (memb.accepted or memb.is_owner):
+                        if should_notify_user(memb.uid, chat.chid):
+                            await bot.send_message(memb.uid, f"у вас есть непрочитанные сообщения в '{chat.title}'", reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}]]))
             except Exception as e:
                 asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "что-то пошло не так"), 20))
             if not fl and is_next_message_exist(chat.chid, chat.cursor):
@@ -270,8 +296,8 @@ async def _catch(message: types.Message):
                 if bt is None and tt is None:
                     return 1
                 await bot.edit_message_text(text=tt, chat_id=message.from_user.id, message_id=user.mmid, reply_markup=bt)
-
-    asyncio.create_task(delete_message(message, 6))
+    if not summoned:
+        asyncio.create_task(delete_message(message, 6))
 
 
 def infinity_run():

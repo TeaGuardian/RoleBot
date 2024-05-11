@@ -1,3 +1,4 @@
+import source.builders
 from .db_pack import db_session
 from .db_pack.users import User
 from .db_pack.filters import Filter
@@ -131,6 +132,16 @@ def count_filters(uid: int) -> int:   # количество фильтров п
     return DB_SESSION.query(Filter).filter(Filter.uid == uid).count()
 
 
+def get_filters_for_notifies() -> List[Filter]:
+    return DB_SESSION.query(Filter).filter(Filter.notify, Filter.notified == False).all()
+
+
+async def clear_filters_to_notify(uid: int):
+    for fi in get_filters(uid):
+        fi.notified = False
+    DB_SESSION.commit()
+
+
 """____________________________________ blank DB METHODS ____________________________________"""
 
 
@@ -259,11 +270,29 @@ def get_se_rez(ub: User, n: int) -> int | None:   # получить резул�
     return ssl["search"]["query"][ub.gbid] if 0 <= n < len(ssl["search"]["query"]) else None
 
 
+def find_in_se(ub: User, bid: int):   # получить номер бланка в поиске
+    ssl = loads(ub.sp_dat)
+    return ssl["search"]["query"].index(bid) if bid in ssl["search"]["query"] else None
+
+
 def clear_sl(ub: User):   # очистить результаты поиска
     ssl = loads(ub.sp_dat)
     ssl["search"]["query"] = []
     ub.sp_dat = dumps(ssl)
     DB_SESSION.commit()
+
+
+async def search_to_notify(bid: int, notify_func, timed_func):
+    bl = get_blank(bid)
+    uids = []
+    for fi in get_filters_for_notifies():
+        corp = bl.search_grate(fi.fil_blacklist, fi.fil_typ_dc, fi.fil_typ_ff, limited=True) if fi.fil_typ_ff is not None else 1
+        if corp >= const.FILTER_NOTIFY_LIMIT and arpho.grate_similarity(bl.fil_fand, fi.fil_fand) >= const.DES_CORR_LIMIT:
+            if fi.uid not in uids:
+                asyncio.create_task(notify_func(fi.uid, "Уведомление от одного из ваших фильтров, хотите посмотреть?", [{"text": "открыть", "callback_data": f"$do#openblank^{bl.bid}"}]))
+                uids.append(fi.uid)
+    if uids:
+        asyncio.create_task(timed_func(bl.uid, f"О вашем бланке уже знают {len(uids)} {arpho.agree_with_number('пользователь', len(uids))}.", 10))
 
 
 """____________________________________ membership + chat DB METHODS ____________________________________"""
@@ -316,9 +345,16 @@ async def clear_messages(chid: int):   # очистить сообщения ч�
     DB_SESSION.commit()
 
 
+async def reduce_blanks(chid: int):   # снять с публикации анкеты к которым привязан чат
+    for bl in get_chat_binded(chid):
+        bl.publ = False
+    DB_SESSION.commit()
+
+
 def del_chat(chid: int):   # удалить чат
     DB_SESSION.delete(DB_SESSION.query(Chat).filter(Chat.chid == chid).first())
     DB_SESSION.commit()
+    asyncio.create_task(reduce_blanks(chid))
     asyncio.create_task(clear_messages(chid))
 
 
@@ -328,6 +364,8 @@ def del_member(uid: int, chid: int):   # удалить участие в чат
     if chat.members_co < 1:
         del_chat(chid)
     DB_SESSION.delete(DB_SESSION.query(ChatMember).filter(ChatMember.uid == uid, ChatMember.chid == chid).first())
+    for bl in get_chat_binded_for_user(chid, uid):
+        bl.publ = False
     DB_SESSION.commit()
 
 
@@ -399,28 +437,31 @@ def get_message(chid: int, mid: int) -> Message:   # получить сообщ
     return DB_SESSION.query(Message).filter(Message.chid == chid, Message.mid == mid).first()
 
 
-def should_notify_user(uid: int) -> bool:   # проверить следует ли уведомить пользователя
-    ub = get_user_data(uid)
-    da = loads(ub.sp_dat)
-    rez = False
-    if "chat_notify_flag" not in da.keys() or da["chat_notify_flag"]:
-        da["chat_notify_flag"] = False
-        rez = True
-    ub.sp_dat = dumps(da)
+def should_notify_user(uid: int, from_chid: int) -> bool:   # проверить следует ли уведомить пользователя
+    mb = get_membership(uid, from_chid)
+    if mb.notified:
+        return False
+    mb.notified = True
     DB_SESSION.commit()
-    return rez
+    return True
 
 
 def clear_should_notify_user(uid: int):   # очистить флаг уведомления пользователя
-    ub = get_user_data(uid)
-    da = loads(ub.sp_dat)
-    da["chat_notify_flag"] = True
-    ub.sp_dat = dumps(da)
+    for memb in get_games(uid):
+        memb.notify = False
     DB_SESSION.commit()
 
 
 def chat_binded_count(chid: int) -> int:   # проверить к скольким анкетам привязан чат
     return DB_SESSION.query(Blank).filter(Blank.chid == chid, Blank.exist_to_user, Blank.finished, Blank.publ).count()
+
+
+def get_chat_binded(chid: int) -> List[Blank]:   # получить бланки привязанные к чату
+    return DB_SESSION.query(Blank).filter(Blank.chid == chid, Blank.exist_to_user, Blank.finished, Blank.publ).all()
+
+
+def get_chat_binded_for_user(chid: int, uid: int) -> List[Blank]:   # получить бланки привязанные к чату для пользователя
+    return DB_SESSION.query(Blank).filter(Blank.chid == chid, Blank.uid == uid, Blank.exist_to_user, Blank.finished, Blank.publ).all()
 
 
 async def _manage_atc():   # очистка лишних скомпилированных историй

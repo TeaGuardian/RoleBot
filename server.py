@@ -97,11 +97,12 @@ async def _main_notification(message: types.Message):
         for role in const.ROLES:
             for user in get_users_by_role(role):
                 try:
-                    await bot.send_message(user.uid, message.html_text.lstrip('main_notification'),
+                    await bot.send_message(user.uid, message.html_text.lstrip('/main_notification'),
                                            reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}]]),
                                            disable_notification=not user.notify_i)
                 except Exception as e:
                     await errors_handler("main_notification", e)
+                    asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "что-то пошло не так"), 20))
         asyncio.create_task(send_message_timed(message.from_user.id, "завершено!", 10))
 
 
@@ -300,12 +301,14 @@ async def _catch(message: types.Message, summoned=False):
             try:
                 reg_message(get_games(user.uid)[user.gsel].chid, user.uid, message.html_text)
                 asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "отправлено")))
+                chh = get_chat_data(chat.chid)
                 for memb in get_memberships(chat.chid):
                     if is_user_exist(memb.uid) and memb.notify and (memb.accepted or memb.is_owner):
                         if should_notify_user(memb.uid, chat.chid):
-                            await bot.send_message(memb.uid, f"у вас есть непрочитанные сообщения в '{chat.title}'", reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}]]))
+                            await bot.send_message(memb.uid, f"у вас есть непрочитанные сообщения в '{chh.title} от {memb.nickname}'", reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}]]))
             except Exception as e:
                 asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "что-то пошло не так"), 20))
+                await errors_handler("chat_message", e)
             if not fl and is_next_message_exist(chat.chid, chat.cursor):
                 bt, tt = build_menu(message.from_user, bot, "$do#chat+1")
                 if bt is None and tt is None:

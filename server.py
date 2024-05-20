@@ -304,8 +304,8 @@ async def _catch(message: types.Message, summoned=False):
                 chh = get_chat_data(chat.chid)
                 for memb in get_memberships(chat.chid):
                     if is_user_exist(memb.uid) and memb.notify and (memb.accepted or memb.is_owner):
-                        if should_notify_user(memb.uid, chat.chid):
-                            await bot.send_message(memb.uid, f"у вас есть непрочитанные сообщения в '{chh.title} от {memb.nickname}'", reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}]]))
+                        if memb.uid != user.uid and should_notify_user(memb.uid, chat.chid):
+                            await bot.send_message(memb.uid, f"у вас есть непрочитанные сообщения в '{chh.title}' от {memb.nickname}", reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}]]))
             except Exception as e:
                 asyncio.create_task(delete_message(await bot.send_message(message.from_user.id, "что-то пошло не так"), 20))
                 await errors_handler("chat_message", e)

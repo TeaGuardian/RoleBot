@@ -1,4 +1,3 @@
-import asyncio
 from .db_trans import *
 from aiogram import types, Bot
 from datetime import datetime, timedelta
@@ -488,11 +487,13 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
                 call = "$root#filters"
                 if ub.gfid == ub.mfid:
                     clear_sl(ub)
+                asyncio.create_task(sp_find_blanks(ub.uid, fl.fid, []))
                 return 1
             else:
                 acs = False
             if call != "$do#accept_fe" and ub.gfid == ub.mfid:
                 clear_sl(ub)
+                asyncio.create_task(sp_find_blanks(ub.uid, fl.fid, []))
             if acs:
                 fl.state = fl.state + 1
             confirm_data_editing()
@@ -501,6 +502,8 @@ def build_menu(user_obj, bot: Bot, call="", in_bt=None, in_tt=None):
             ub.feid_f = True
             if fl.state > 5:
                 ub.feid_f = False
+                clear_sl(ub)
+                asyncio.create_task(sp_find_blanks(ub.uid, fl.fid, []))
         else:
             ub.feid_f = False
         confirm_data_editing()

@@ -59,7 +59,7 @@ def save_bot_backup(backup):
 def reg_user(uid: int, name: str):   # зарегестрировать пользователя
     global USER_COUNTER
     USER_COUNTER += 1
-    user = User(uid=uid, username=name)
+    user = User(uid=uid, username=name, reg_date=datetime.now())
     DB_SESSION.add(user)
     DB_SESSION.commit()
     print("count of users: ", USER_COUNTER)
@@ -415,6 +415,12 @@ def get_all_messages(chid: int) -> List[Message]:   # получить все с
 
 def get_first_message_id(chid: int) -> int:   # получить id первого сообщения
     return DB_SESSION.query(Message).filter(Message.chid == chid).first().mid
+
+
+async def update_localnickname_in_messages(chid: int, uid: int, localnickname: str):
+    for mes in DB_SESSION.query(Message).filter(Message.chid == chid, Message.uid == uid).all():
+        mes.nickname = localnickname
+    DB_SESSION.commit()
 
 
 def reg_message(chid: int, uid: int, text: str):   # добавить сообщение

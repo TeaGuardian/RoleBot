@@ -2,6 +2,7 @@ from .db_trans import *
 from aiogram import types, Bot
 from datetime import datetime, timedelta
 bot = Bot(token=const.API, parse_mode=types.ParseMode.HTML)
+from server import errors_handler
 
 
 def special_but_conv(data):
@@ -21,20 +22,32 @@ def special_but_conv(data):
 
 
 async def delete_message(message: types.Message, time=3):
-    await asyncio.sleep(time)
-    await message.delete()
+    try:
+        await asyncio.sleep(time)
+        await message.delete()
+    except Exception as e:
+        await errors_handler("builders.dm", e, message.from_user.id)
 
 
 async def send_message(uid: int, text: str, notify=None):
-    await bot.send_message(uid, text, disable_notification=notify)
+    try:
+        await bot.send_message(uid, text, disable_notification=notify)
+    except Exception as e:
+        await errors_handler("builders.sm", e, uid)
 
 
 async def send_message_timed(uid: int, text: str, time=20):
-    await delete_message(await bot.send_message(uid, text), time)
+    try:
+        await delete_message(await bot.send_message(uid, text), time)
+    except Exception as e:
+        await errors_handler("builders.smt", e, uid)
 
 
 async def hideable_message(uid: int, text: str, buttons=()):
-    await bot.send_message(uid, text, reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}, *buttons]]))
+    try:
+        await bot.send_message(uid, text, reply_markup=special_but_conv([[{"text": "скрыть уведомление", "callback_data": "$delite_this_message"}, *buttons]]))
+    except Exception as e:
+        await errors_handler("builders.hm", e, uid)
 
 
 dpp = {"$sp^pg": "PG",

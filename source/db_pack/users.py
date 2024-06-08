@@ -9,7 +9,7 @@ class User(SqlAlchemyBase):
     iid = sqlalchemy.Column(sqlalchemy.Integer, primary_key=True, autoincrement=True)
     uid = sqlalchemy.Column(sqlalchemy.Integer, index=True)
     username = sqlalchemy.Column(sqlalchemy.String)
-    nickname = sqlalchemy.Column(sqlalchemy.String, default=f"пользователь №{iid}")
+    nickname = sqlalchemy.Column(sqlalchemy.String, default=f"unknown")
     reg_date = sqlalchemy.Column(sqlalchemy.DateTime, default=datetime.datetime.now())
     last_active = sqlalchemy.Column(sqlalchemy.DateTime, default=datetime.datetime.now())
     notify_a = sqlalchemy.Column(sqlalchemy.Boolean, default=True)   # уведомления рекламы
